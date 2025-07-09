@@ -8,7 +8,7 @@ from sharc.parameters.parameters_base import ParametersBase
 class ParametersHaps(ParametersBase):
     """Dataclass containing the IMT system parameters
     """
-    section_name: str = "HAPS"
+    section_name: str = "haps"
     # HAPS center frequency [MHz]
     frequency: float = 27250.0
     # HAPS bandwidth [MHz]
@@ -29,15 +29,15 @@ class ParametersHaps(ParametersBase):
     # Antenna pattern of the HAPS (airbone) station
     # Possible values: "ITU-R F.1891", "OMNI"
     antenna_pattern: str = "ITU-R F.1891"
-    # IMT parameters relevant to the HAPS system
-    #    altitude of IMT system (in meters)
-    #    latitude of IMT system (in degrees)
-    #    difference between longitudes of IMT and satellite system
+    # Parameters for the P.619 propagation model
+    #    earth_station_alt_m - altitude of IMT system (in meters)
+    #    earth_station_lat_deg - latitude of IMT system (in degrees)
+    #    earth_station_long_diff_deg - difference between longitudes of IMT and satellite system
     #      (positive if space-station is to the East of earth-station)
-    imt_altitude: float = 0.0
-    imt_lat_deg: float = 0.0
-    imt_long_diff_deg: float = 0.0
-    # Season of the year for the channel model
+    #    season - season of the year.
+    earth_station_alt_m: float = 0.0
+    earth_station_lat_deg: float = 0.0
+    earth_station_long_diff_deg: float = 0.0
     season: str = "SUMMER"
     # Adjacent channel selectivity [dB]
     acs: float = 30.0
@@ -76,8 +76,7 @@ class ParametersHaps(ParametersBase):
             raise ValueError(f"ParametersHaps: \
                              Invalid value for parameter season - {self.season}. \
                              Possible values are \"SUMMER\", \"WINTER\".")
-        
+
         # Post initialization
         # tx antenna power density [dBW/MHz]
         self.tx_power_density = self.eirp_density - self.antenna_gain - 60
-
