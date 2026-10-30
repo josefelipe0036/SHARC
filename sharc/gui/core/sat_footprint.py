@@ -17,9 +17,13 @@ power: a planning bound, not a Monte Carlo result.
 from __future__ import annotations
 
 import math
+import traceback
 from typing import Any, Dict, Optional
 
 import numpy as np
+
+# np.trapezoid only exists from NumPy 2.0; np.trapz is the same integral in NumPy 1.x
+_trapezoid = getattr(np, "trapezoid", None) or np.trapz
 
 EARTH_RADIUS = 6_371_000.0
 GRID_N = 161                       # about 20 km cells for a GEO spot beam: the beam is resolved, not blocky
@@ -69,7 +73,7 @@ def pattern_directivity(antenna, peak: float):
     rows = []
     for phi in phis:
         g = np.asarray(antenna_service.gain_at(antenna, theta, np.full_like(theta, phi)), dtype=float)
-        rows.append(np.trapezoid(10.0 ** (np.nan_to_num(g, nan=-60.0) / 10.0) * w, np.radians(theta)))
+        rows.append(_trapezoid(10.0 ** (np.nan_to_num(g, nan=-60.0) / 10.0) * w, np.radians(theta)))
     mean_lin = float(np.mean(rows)) / 2.0                           # (1 / 4 pi) * integral = mean(phi) * 2 pi / 4 pi
     return float(peak - 10.0 * math.log10(mean_lin)), float(10.0 * math.log10(mean_lin))
 
@@ -82,6 +86,10 @@ def _beam_map(values, peak: float, unit: str, title: str) -> Dict[str, Any]:
             "bold": round(peak - 3.0, 2), "fade_below": round(peak + FLOOR_DB, 2)}
 
 
+class _NoSpaceStation(Exception):
+    """The scenario has no satellite: no footprint, and nothing to report."""
+
+
 def compute(es, n: int = GRID_N) -> Optional[Dict[str, Any]]:
     cached = getattr(es, "_sat_footprint", "unset")
     if cached != "unset":
@@ -89,7 +97,7 @@ def compute(es, n: int = GRID_N) -> Optional[Dict[str, Any]]:
     result = None
     try:
         if str(es.params.general.system).upper() != "SINGLE_SPACE_STATION" or es.system is None:
-            raise ValueError("no space station")
+            raise _NoSpaceStation()
         from core import antenna_service, gain_lobe, heatmap
 
         ss = es.params.single_space_station
@@ -189,7 +197,10 @@ def compute(es, n: int = GRID_N) -> Optional[Dict[str, Any]]:
                   "contrib": [round(float(v), 1) for v in per_bs],
                   "victim_lla": {"lat_deg": lat_s, "lon_deg": lon_s, "alt_m": alt},
                   "pointing": {"target_lat_deg": lat_t, "target_lon_deg": lon_t}}
-    except Exception:                                        # noqa: BLE001 - decoration only
+    except _NoSpaceStation:
+        result = None
+    except Exception:                                        # noqa: BLE001 - decoration only, but never silent
+        traceback.print_exc()
         result = None
     try:
         es._sat_footprint = result

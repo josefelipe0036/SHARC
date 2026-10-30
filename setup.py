@@ -37,6 +37,8 @@ setup(
         ]
     },
     include_package_data=True,
+    # f-strings with quotes and line breaks inside the braces (PEP 701)
+    python_requires='>=3.12',
     install_requires=requirements,
     license="GNU General Public License v3",
     zip_safe=False,
@@ -46,13 +48,8 @@ setup(
         'Intended Audience :: Developers',
         'License :: OSI Approved :: GNU General Public License v3 (GPLv3)',
         'Natural Language :: English',
-        "Programming Language :: Python :: 2",
-        'Programming Language :: Python :: 2.6',
-        'Programming Language :: Python :: 2.7',
         'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.3',
-        'Programming Language :: Python :: 3.4',
-        'Programming Language :: Python :: 3.5',
+        'Programming Language :: Python :: 3.12',
     ],
     test_suite='tests',
     tests_require=test_requirements

@@ -11,6 +11,7 @@ import json
 import shlex
 from datetime import timedelta
 from core.state import get_sharc_root
+from core.ssh_host_keys import apply_host_key_policy, changed_key_hint
 
 PROJECT_ROOT = get_sharc_root()
 # This dictionary is now actively populated by RunnerManager
@@ -142,7 +143,7 @@ class RunnerManager:
             return False
 
     def _quote_remote_single(self, value: str) -> str:
-        return "'" + str(value).replace("'", "'\''") + "'"
+        return shlex.quote(str(value))
 
     def _detect_remote_venv(self, log_result: bool = True):
         """
@@ -201,11 +202,13 @@ print(json.dumps({{"found": found, "base": base}}))
         venv_path = self.remote_venv_path or self._detect_remote_venv(log_result=False)
         if venv_path:
             quoted = self._quote_remote_single(venv_path)
+            activating = self._quote_remote_single(f"[VENV] Activating {venv_path}")
+            not_found = self._quote_remote_single(f"[VENV] Activation script not found: {venv_path}")
             return (
                 f"if [ -f {quoted} ]; then "
-                f"echo '[VENV] Activating {venv_path}'; "
+                f"echo {activating}; "
                 f"source {quoted}; "
-                f"else echo '[VENV] Activation script not found: {venv_path}'; fi"
+                f"else echo {not_found}; fi"
             )
         return "echo '[VENV] No virtualenv detected. Running with system Python.'"
 
@@ -219,7 +222,7 @@ print(json.dumps({{"found": found, "base": base}}))
         if main_cli and main_cli.endswith('.py'):
             return f"python3 {shlex.quote(main_cli)} -p {shlex.quote(remote_path)}"
         if main_cli:
-            return f"python3 -m {main_cli} -p {shlex.quote(remote_path)}"
+            return f"python3 -m {shlex.quote(main_cli)} -p {shlex.quote(remote_path)}"
         # Fallback to avoid infinite recursion
         return f"python3 sharc/main_cli.py -p {shlex.quote(remote_path)}"
 
@@ -239,7 +242,7 @@ print(json.dumps({{"found": found, "base": base}}))
         self._cleanup_connection()
         try:
             cli = paramiko.SSHClient()
-            cli.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            apply_host_key_policy(cli, log=self.log_callback)
             cli.connect(
                 hostname=host,
                 port=port,
@@ -259,6 +262,8 @@ print(json.dumps({{"found": found, "base": base}}))
         except Exception as e:
             self._cleanup_connection()
             self.log_callback(f"[SSH] Connection Error: {e}")
+            if isinstance(e, paramiko.BadHostKeyException):
+                self.log_callback(changed_key_hint())
             raise e
 
     def connect_ssh_key(self, host, user, port, key_path):
@@ -266,7 +271,7 @@ print(json.dumps({{"found": found, "base": base}}))
         try:
             k = paramiko.RSAKey.from_private_key_file(key_path)
             cli = paramiko.SSHClient()
-            cli.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            apply_host_key_policy(cli, log=self.log_callback)
             cli.connect(
                 hostname=host,
                 port=port,
@@ -286,6 +291,8 @@ print(json.dumps({{"found": found, "base": base}}))
         except Exception as e:
             self._cleanup_connection()
             self.log_callback(f"[SSH] Key Connection Error: {e}")
+            if isinstance(e, paramiko.BadHostKeyException):
+                self.log_callback(changed_key_hint())
             raise e
 
     def _detect_remote_home(self):
@@ -338,7 +345,7 @@ print(json.dumps({{"found": found, "base": base}}))
                 "-L", f"127.0.0.1:{loc_port}:{int_ip}:{int_port}",
                 f"{bastion_user}@{bastion_host}",
                 "-p", str(bastion_port),
-                "-o", "StrictHostKeyChecking=no",
+                "-o", "StrictHostKeyChecking=accept-new",
                 "-o", "ExitOnForwardFailure=yes",
                 "-o", "ServerAliveInterval=30",
                 "-o", "ServerAliveCountMax=3",
@@ -623,7 +630,7 @@ print(json.dumps(items))
         try:
             self.log_callback("[GIT] Fetching remote branches...")
             stdin, stdout, stderr = self.ssh_client.exec_command(
-                f"cd {self.remote_base_dir} && git fetch --all --prune"
+                f"cd {shlex.quote(self.remote_base_dir)} && git fetch --all --prune"
             )
             exit_status = stdout.channel.recv_exit_status()
 
@@ -633,7 +640,7 @@ print(json.dumps(items))
                 return []
 
             out = self.exec_command_output(
-                f"cd {self.remote_base_dir} && git branch -a")
+                f"cd {shlex.quote(self.remote_base_dir)} && git branch -a")
             branches = set()
             for line in out.splitlines():
                 line = line.strip().replace("*", "").strip()
