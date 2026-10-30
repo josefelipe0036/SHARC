@@ -24,10 +24,10 @@ class SampleList(list):
 class Results(object):
     """Handle the output of the simulator"""
 
-    # This should always be true for 1st samples flush
-    overwrite_sample_files = True
-
     def __init__(self):
+        # Sample files this run already wrote: the 1st flush of each one
+        # replaces the file, the next ones append to it
+        self._started_files = set()
         # Transmit power density [dBm/Hz]
         self.imt_ul_tx_power_density = SampleList()
         self.imt_ul_tx_power = SampleList()
@@ -149,6 +149,12 @@ class Results(object):
                 os.makedirs(self.output_directory)
             except FileExistsError:
                 pass
+            # A sample file of a previous run that this run does not write
+            # would otherwise be read back as if it came from this run
+            for attr_name in self.get_relevant_attributes():
+                stale_file = self.output_directory / (attr_name + ".csv")
+                if stale_file.is_file():
+                    stale_file.unlink()
         SimulationLogger.set_output_dir(self.output_directory)
 
         return self
@@ -215,14 +221,12 @@ class Results(object):
             if len(samples) == 0:
                 continue
             df = pd.DataFrame({"samples": samples})
-            if self.overwrite_sample_files:
-                df.to_csv(file_path, mode="w", index=False)
-            else:
+            if attr_name in self._started_files:
                 df.to_csv(file_path, mode="a", index=False, header=False)
+            else:
+                df.to_csv(file_path, mode="w", index=False)
+                self._started_files.add(attr_name)
             setattr(self, attr_name, SampleList())
-
-        if self.overwrite_sample_files:
-            self.overwrite_sample_files = False
 
     @staticmethod
     def load_many_from_dir(

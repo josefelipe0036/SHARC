@@ -1,3 +1,4 @@
+import tempfile
 import unittest
 
 from sharc.results import Results
@@ -58,6 +59,39 @@ class StationTest(unittest.TestCase):
         self.assertEqual(
             results_recuperated_from_file.imt_bs_antenna_gain,
             results_arr)
+
+    def test_overwrite_does_not_mix_samples_of_a_previous_run(self):
+        """Test that a file of a previous run is replaced even if its 1st samples come after the 1st flush."""
+        with tempfile.TemporaryDirectory() as folder:
+            previous = Results().prepare_to_write(None, True, output_dir=folder)
+            previous.imt_coupling_loss.extend([111., 111., 111.])
+            previous.imt_bs_antenna_gain.extend([1.])
+            previous.write_files(1)
+
+            current = Results().prepare_to_write(None, True, output_dir=folder)
+            current.imt_bs_antenna_gain.extend([2.])
+            current.write_files(1)
+            current.imt_coupling_loss.extend([999.])
+            current.write_files(2)
+
+            loaded = Results().load_from_dir(folder)
+            self.assertEqual(loaded.imt_coupling_loss, [999.])
+            self.assertEqual(loaded.imt_bs_antenna_gain, [2.])
+
+    def test_overwrite_removes_sample_files_the_new_run_does_not_write(self):
+        """Test that a sample file of a previous run is not read back as a result of the new run."""
+        with tempfile.TemporaryDirectory() as folder:
+            previous = Results().prepare_to_write(None, True, output_dir=folder)
+            previous.imt_coupling_loss.extend([111.])
+            previous.write_files(1)
+
+            current = Results().prepare_to_write(None, True, output_dir=folder)
+            current.imt_bs_antenna_gain.extend([2.])
+            current.write_files(1)
+
+            loaded = Results().load_from_dir(folder)
+            self.assertEqual(loaded.imt_coupling_loss, [])
+            self.assertEqual(loaded.imt_bs_antenna_gain, [2.])
 
     def test_get_most_recent_dirs(self):
         """Test retrieval of most recent output directories for each prefix."""

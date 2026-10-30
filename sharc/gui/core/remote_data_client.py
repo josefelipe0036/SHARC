@@ -22,9 +22,10 @@ class RemoteDataClient:
     def get_ssh_client(self, host, port, user, pwd=None):
         if not paramiko:
             return None
+        from core.ssh_host_keys import apply_host_key_policy
         try:
             client = paramiko.SSHClient()
-            client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            apply_host_key_policy(client)
             client.connect(host, port=port, username=user, password=pwd, timeout=5)
             return client
         except Exception as e:
